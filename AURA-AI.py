@@ -1,3 +1,4 @@
+from funcoes.ollama_integra import perguntar_ollama
 from funcoes.auxiliares import falar, ouvir_comando, data_hora, pesquisar_web
 from funcoes.apps_basicos import COMANDOS_APP, abrir_app
 from funcoes.spotify import inicializar_spotify, buscar_musica, pular_musica, pausar, play
@@ -58,27 +59,45 @@ def executar_comando(comando):
 
     else:
         if comando:
-            falar("Desculpe, não entendi o comando.")
+            # Envia para o modelo local (Ollama) tentar responder
+            resposta = perguntar_ollama(comando)
+            if not resposta:
+                falar("Desculpe, não entendi o comando.")
 
 if __name__ == "__main__":
     estado_assistente = "ativo"
-    falar("Aura iniciada com sucesso. Como posso ajudar?")
 
+    falar("Aura iniciada com sucesso. Como posso ajudar?")
+    
     while True:
         comando = ouvir_comando()
         if not comando:
             continue
 
+        comando = comando.lower()
+
+        # --- LÓGICA PARA REATIVAR O ASSISTENTE ---
         if estado_assistente == "espera":
             if PALAVRA_ATIVACAO in comando or NOME_ASSISTENTE in comando:
                 estado_assistente = "ativo"
-                falar("Aura reativada. Como posso ajudar?")
-            continue
+                # Remove apenas a palavra de ativação do comando
+                comando = comando.replace(PALAVRA_ATIVACAO, "").replace(NOME_ASSISTENTE, "").strip()
+                falar("Aura reativada.")
+                # Se sobrou algum comando além do gatilho, execute
+                if comando:
+                    executar_comando(comando)
+                continue
+            else:
+                # Se estiver em espera e não mencionou a ativação, ignora
+                continue
 
+        # --- LÓGICA PARA ENTRAR EM MODO DE ESPERA ---
         if "modo de espera" in comando or "fique em espera" in comando:
             estado_assistente = "espera"
             falar(f"Entrando em modo de espera. Diga '{PALAVRA_ATIVACAO}' ou '{NOME_ASSISTENTE}' para me reativar.")
             continue
-
+            
+        # --- EXECUTAR COMANDOS ---
         if NOME_ASSISTENTE in comando:
-            falar("Sim? Estou ouvindo...")
+            comando = comando.replace(NOME_ASSISTENTE, "").strip()
+            executar_comando(comando)
