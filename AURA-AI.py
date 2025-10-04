@@ -1,135 +1,84 @@
-import speech_recognition as sr
-import subprocess
-import pyttsx3
-import webbrowser
-import datetime
-import locale
+from funcoes.auxiliares import falar, ouvir_comando, data_hora, pesquisar_web
+from funcoes.apps_basicos import COMANDOS_APP, abrir_app
+from funcoes.spotify import inicializar_spotify, buscar_musica, pular_musica, pausar, play
+from funcoes.youtube import tocar_youtube
 
-# --- Configurações Iniciais ---
-try:
-    locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
-except locale.Error:
-    print("Locale pt_BR.UTF-8 não encontrado. A data pode aparecer em inglês.")
-    # Tenta um fallback para o padrão do sistema
-    locale.setlocale(locale.LC_TIME, '')
+NOME_ASSISTENTE = "aura"
+PALAVRA_ATIVACAO = "ativar"
 
-# Inicializa o motor de Text-to-Speech (TTS)
-engine = pyttsx3.init()
+sp = inicializar_spotify()
 
-# Mapeamento de palavras-chave para caminhos de executáveis
-COMANDOS_APP = {
-    "navegador": "brave.exe",           # seu navegador padrão (Edge, Chrome, Brave, etc...)
-    "calculadora": "calc.exe",           # calculadora
-    "captura": "SnippingTool.exe",       # ferramenta de captura
-    "configurações": "ms-settings:",     # configurações do Windows
-    "bloco de notas": "notepad.exe"      # bloco de notas
-}
+def executar_comando(comando):
+    if NOME_ASSISTENTE in comando:
+        comando = comando.replace(NOME_ASSISTENTE, "").strip()
 
-PALAVRA_ATIVACAO = "aura"
+    # --- Spotify ---
+    if comando.startswith("toque") and "youtube" not in comando:
+        musica = comando.replace("toque", "").strip()
+        buscar_musica(sp, musica)
+    elif "pula" in comando or "próxima" in comando:
+        pular_musica(sp)
+    elif "pausa" in comando or "parar" in comando:
+        pausar(sp)
+    elif "continuar" in comando or "play" in comando:
+        play(sp)
 
-# --- Funções do Assistente ---
-def falar(texto):
-    """Função para o assistente falar."""
-    print(f"Assistente: {texto}")
-    engine.say(texto)
-    engine.runAndWait()
+    # --- YouTube ---
+    elif "toque no youtube" in comando:
+        termo = comando.replace("toque no youtube", "").strip()
+        if termo:
+            tocar_youtube(termo)
+        else:
+            falar("O que você quer tocar no YouTube?")
 
-def ouvir_microfone():
-    """Habilita o microfone, ouve o usuário e retorna a frase."""
-    microfone = sr.Recognizer()
-    with sr.Microphone() as source:
-        print("Aguardando comando...")
-        microfone.adjust_for_ambient_noise(source)
-        audio = microfone.listen(source)
+    # --- Apps básicos ---
+    elif comando.startswith("abrir"):
+        app_nome = comando.replace("abrir", "").strip()
+        if app_nome in COMANDOS_APP:
+            abrir_app(app_nome)
+        else:
+            falar("Não reconheci o aplicativo que você pediu.")
 
-    try:
-        frase = microfone.recognize_google(audio, language='pt-BR')
-        print(f"Você disse: {frase}")
-        return frase.lower()
-    except sr.UnknownValueError:
-        return ""
-    except sr.RequestError:
-        falar("Desculpe, estou com problemas de conexão para reconhecer a fala.")
-        return ""
+    # --- Data e hora ---
+    elif "que horas são" in comando or "que dia é hoje" in comando:
+        data_hora()
 
-# --- Funções de Ações ---
-def responder_horas():
-    """Informa a hora atual."""
-    agora = datetime.datetime.now()
-    resposta = f"Agora são {agora.hour} horas e {agora.minute} minutos."
-    falar(resposta)
+    # --- Pesquisar no navegador ---
+    elif comando.startswith("pesquise por") or comando.startswith("procure por"):
+        termo = comando.replace("pesquise por", "").replace("procure por", "").strip()
+        if termo:
+            pesquisar_web(termo)
+        else:
+            falar("O que você deseja pesquisar?")
 
-def responder_data():
-    """Informa a data atual por extenso."""
-    agora = datetime.datetime.now()
-    # Formatação: "sexta-feira, 3 de outubro de 2025"
-    resposta = agora.strftime("Hoje é %A, %d de %B de %Y.")
-    falar(resposta)
+    # --- Encerrar assistente ---
+    elif "encerrar assistente" in comando:
+        falar("Encerrando assistente. Até logo!")
+        exit()
 
-def pesquisar_web(frase):
-    """Realiza uma pesquisa no Google."""
-    # Encontra o termo a ser pesquisado (o que vem depois de "pesquisar por")
-    termo_pesquisa = frase.split("pesquisar por")[-1].strip()
-    
-    if not termo_pesquisa:
-        falar("Não entendi o que você quer pesquisar.")
-        return
+    else:
+        if comando:
+            falar("Desculpe, não entendi o comando.")
 
-    url_pesquisa = f"https://www.google.com/search?q={termo_pesquisa}"
-    falar(f"Pesquisando por '{termo_pesquisa}' no navegador.")
-    webbrowser.open(url_pesquisa)
-
-# --- Função Principal de Processamento ---
-def processar_comandos(frase):
-    """Processa a frase para encontrar e executar um comando."""
-    # Primeiro, verifica se a palavra de ativação foi dita
-    if PALAVRA_ATIVACAO not in frase:
-        return # Se a palavra de ativação não estiver na frase, ignora
-
-    falar("Sim?")
-    frase = frase.replace(PALAVRA_ATIVACAO, '', 1).strip()
-
-    # --- Verificação de Comandos Específicos ---
-    if "que horas são" in frase or "me diga as horas" in frase:
-        responder_horas()
-        return
-
-    elif "que dia é hoje" in frase or "qual a data de hoje" in frase:
-        responder_data()
-        return
-
-    elif "pesquisar por" in frase or "pesquise por" in frase:
-        pesquisar_web(frase)
-        return
-        
-    # --- Verificação de Comandos para Abrir Aplicativos ---
-    for palavra_chave, executavel in COMANDOS_APP.items():
-        if palavra_chave in frase:
-            falar(f"Abrindo o {palavra_chave}.")
-            try:
-                subprocess.Popen(executavel)
-                return
-            except FileNotFoundError:
-                falar(f"Desculpe, não consegui encontrar o programa {palavra_chave}.")
-            except Exception as e:
-                falar(f"Ocorreu um erro ao tentar abrir o {palavra_chave}.")
-                print(e)
-            return
-
-    # --- Comando para Desligar ---
-    if "desligar" in frase or "parar" in frase:
-        falar("Desligando. Até mais!")
-        return "desligar"
-    
-    # --- Se nenhum comando for reconhecido ---
-    falar("Não entendi o comando. Pode repetir?")
-
-# --- Loop Principal de Execução ---
 if __name__ == "__main__":
-    falar("Assistente iniciado. Diga 'aura' seguido de um comando.")
+    estado_assistente = "ativo"
+    falar("Aura iniciada com sucesso. Como posso ajudar?")
+
     while True:
-        frase_ouvida = ouvir_microfone()
-        if frase_ouvida:
-            resultado = processar_comandos(frase_ouvida)
-            if resultado == "desligar":
-                break
+        comando = ouvir_comando()
+        if not comando:
+            continue
+
+        if estado_assistente == "espera":
+            if PALAVRA_ATIVACAO in comando or NOME_ASSISTENTE in comando:
+                estado_assistente = "ativo"
+                falar("Aura reativada. Como posso ajudar?")
+            continue
+
+        if "modo de espera" in comando or "fique em espera" in comando:
+            estado_assistente = "espera"
+            falar(f"Entrando em modo de espera. Diga '{PALAVRA_ATIVACAO}' ou '{NOME_ASSISTENTE}' para me reativar.")
+            continue
+
+        if NOME_ASSISTENTE in comando:
+            falar("Sim? Estou ouvindo...")
