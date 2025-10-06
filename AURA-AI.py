@@ -1,74 +1,149 @@
-from funcoes.ollama_integra import perguntar_ollama
-from funcoes.auxiliares import falar, ouvir_comando, data_hora, pesquisar_web
-from funcoes.apps_basicos import COMANDOS_APP, abrir_app
-from funcoes.spotify import inicializar_spotify, buscar_musica, pular_musica, pausar, play
-from funcoes.youtube import tocar_youtube
+# ==========================================
+# 🤖 AURA - ASSISTENTE VIRTUAL COM OLLAMA
+# ==========================================
+# Desenvolvido por: Marco Túlio Salvador Filho
+# Integrações: Spotify API, YouTube Search, Ollama (LLM local)
+# ==========================================
 
+import os
+import datetime
+import logging
+from funcoes.auxiliares import falar, ouvir_comando, data_hora, pesquisar_web
+from funcoes.apps_basicos import abrir_app
+from funcoes.spotify import (
+    inicializar_spotify,
+    buscar_musica,
+    pular_musica,
+    pausar,
+    play
+)
+from funcoes.youtube import tocar_youtube
+from funcoes.ollama_integration import perguntar_ollama
+
+# --- CONFIGURAÇÕES GERAIS ---
 NOME_ASSISTENTE = "aura"
 PALAVRA_ATIVACAO = "ativar"
 
+# Inicializa Spotify
 sp = inicializar_spotify()
 
+# Cria pasta de logs, se não existir
+os.makedirs("logs", exist_ok=True)
+logging.basicConfig(
+    filename="logs/aura.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+
+# ===================================
+# 💡 FUNÇÃO PRINCIPAL DE EXECUÇÃO
+# ===================================
 def executar_comando(comando):
-    if NOME_ASSISTENTE in comando:
-        comando = comando.replace(NOME_ASSISTENTE, "").strip()
+    """
+    A função principal usa o Ollama como cérebro da Aura.
+    Ele interpreta o comando do usuário, gera respostas e,
+    quando apropriado, aciona as funções do sistema.
+    """
+    try:
+        logging.info(f"Comando recebido: {comando}")
 
-    # --- Spotify ---
-    if comando.startswith("toque") and "youtube" not in comando:
-        musica = comando.replace("toque", "").strip()
-        buscar_musica(sp, musica)
-    elif "pula" in comando or "próxima" in comando:
-        pular_musica(sp)
-    elif "pausa" in comando or "parar" in comando:
-        pausar(sp)
-    elif "continuar" in comando or "play" in comando:
-        play(sp)
+        # Normaliza texto
+        comando = comando.lower().strip()
 
-    # --- YouTube ---
-    elif "toque no youtube" in comando:
-        termo = comando.replace("toque no youtube", "").strip()
-        if termo:
-            tocar_youtube(termo)
-        else:
-            falar("O que você quer tocar no YouTube?")
+        # --- ENCERRAR ASSISTENTE ---
+        if "encerrar" in comando or "fechar assistente" in comando:
+            falar("Encerrando assistente. Até logo!")
+            logging.info("Assistente encerrada pelo usuário.")
+            exit()
 
-    # --- Apps básicos ---
-    elif comando.startswith("abrir"):
-        app_nome = comando.replace("abrir", "").strip()
-        if app_nome in COMANDOS_APP:
-            abrir_app(app_nome)
-        else:
-            falar("Não reconheci o aplicativo que você pediu.")
+        # --- INTERPRETAÇÃO PRINCIPAL COM OLLAMA ---
+        resposta = perguntar_ollama(
+            f"Você é a assistente Aura. Analise e entenda este comando do usuário e responda de forma útil. "
+            f"Se o comando implicar uma ação (como abrir app, tocar música, pausar, pular, pesquisar, etc.), "
+            f"responda naturalmente mencionando a ação, e a execução será feita em seguida. Comando: {comando}"
+        )
 
-    # --- Data e hora ---
-    elif "que horas são" in comando or "que dia é hoje" in comando:
-        data_hora()
+        if not resposta:
+            falar("Desculpe, não consegui entender o comando.")
+            return
 
-    # --- Pesquisar no navegador ---
-    elif comando.startswith("pesquise por") or comando.startswith("procure por"):
-        termo = comando.replace("pesquise por", "").replace("procure por", "").strip()
-        if termo:
-            pesquisar_web(termo)
-        else:
-            falar("O que você deseja pesquisar?")
+        resposta_lower = resposta.lower()
+        logging.info(f"Ollama respondeu: {resposta}")
 
-    # --- Encerrar assistente ---
-    elif "encerrar assistente" in comando:
-        falar("Encerrando assistente. Até logo!")
-        exit()
+        # ==========================================
+        # 🔸 AÇÕES DETECTADAS
+        # ==========================================
+        # Spotify
+        if "spotify" in resposta_lower and ("tocar" in resposta_lower or "ouvir" in resposta_lower):
+            musica = comando.replace("tocar", "").replace("ouvir", "").replace("no spotify", "").strip()
+            buscar_musica(sp, musica)
+            return
 
-    else:
-        if comando:
-            # Envia para o modelo local (Ollama) tentar responder
-            resposta = perguntar_ollama(comando)
-            if not resposta:
-                falar("Desculpe, não entendi o comando.")
+        elif "pular" in resposta_lower or "próxima" in resposta_lower:
+            pular_musica(sp)
+            return
 
+        elif "pausar" in resposta_lower or "parar" in resposta_lower:
+            pausar(sp)
+            return
+
+        elif "continuar" in resposta_lower or "play" in resposta_lower:
+            play(sp)
+            return
+
+        # YouTube
+        elif "youtube" in resposta_lower:
+            termo = comando.replace("toque no youtube", "").replace("no youtube", "").strip()
+            if termo:
+                tocar_youtube(termo)
+            else:
+                falar("Qual vídeo você quer ver no YouTube?")
+            return
+
+        # Abrir aplicativo
+        elif "abrir" in resposta_lower:
+            app = comando.replace("abrir", "").strip()
+            abrir_app(app)
+            return
+
+        # Pesquisar na web
+        elif "pesquisar" in resposta_lower or "procure" in resposta_lower:
+            termo = comando.replace("pesquise por", "").replace("procure por", "").strip()
+            if termo:
+                pesquisar_web(termo)
+            else:
+                falar("O que você deseja pesquisar?")
+            return
+
+        # Data e hora
+        elif "hora" in resposta_lower:
+            agora = datetime.datetime.now()
+            falar(f"Agora são {agora.strftime('%H:%M')}")
+            return
+
+        elif "data" in resposta_lower or "dia" in resposta_lower:
+            hoje = datetime.datetime.now()
+            falar(f"Hoje é {hoje.strftime('%d/%m/%Y')}")
+            return
+
+        # ==========================================
+        # 🔹 RESPOSTAS NORMAIS (SEM AÇÃO DETECTADA)
+        # ==========================================
+        falar(resposta)
+
+    except Exception as e:
+        falar("Houve um erro ao processar seu comando.")
+        logging.error(f"Erro ao executar comando: {comando} | Erro: {e}")
+
+
+# ==========================================================
+# 🔄 LOOP PRINCIPAL DE ESCUTA
+# ==========================================================
 if __name__ == "__main__":
     estado_assistente = "ativo"
-
     falar("Aura iniciada com sucesso. Como posso ajudar?")
-    
+
     while True:
         comando = ouvir_comando()
         if not comando:
@@ -76,28 +151,25 @@ if __name__ == "__main__":
 
         comando = comando.lower()
 
-        # --- LÓGICA PARA REATIVAR O ASSISTENTE ---
+        # --- MODO DE ESPERA ---
         if estado_assistente == "espera":
             if PALAVRA_ATIVACAO in comando or NOME_ASSISTENTE in comando:
                 estado_assistente = "ativo"
-                # Remove apenas a palavra de ativação do comando
                 comando = comando.replace(PALAVRA_ATIVACAO, "").replace(NOME_ASSISTENTE, "").strip()
                 falar("Aura reativada.")
-                # Se sobrou algum comando além do gatilho, execute
                 if comando:
                     executar_comando(comando)
                 continue
             else:
-                # Se estiver em espera e não mencionou a ativação, ignora
                 continue
 
-        # --- LÓGICA PARA ENTRAR EM MODO DE ESPERA ---
+        # --- ENTRAR EM ESPERA ---
         if "modo de espera" in comando or "fique em espera" in comando:
             estado_assistente = "espera"
             falar(f"Entrando em modo de espera. Diga '{PALAVRA_ATIVACAO}' ou '{NOME_ASSISTENTE}' para me reativar.")
             continue
-            
-        # --- EXECUTAR COMANDOS ---
+
+        # --- EXECUTAR COMANDO PRINCIPAL ---
         if NOME_ASSISTENTE in comando:
             comando = comando.replace(NOME_ASSISTENTE, "").strip()
             executar_comando(comando)
