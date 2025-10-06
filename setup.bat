@@ -28,6 +28,34 @@ python -m pip install --upgrade pip
 echo Instalando dependencias do requirements.txt...
 pip install -r requirements.txt
 
+:: Verifica se o Ollama está rodando na porta 11434
+echo Verificando Ollama...
+powershell -Command ^
+    "$port=11434; " ^
+    "$connection = Test-NetConnection -ComputerName 127.0.0.1 -Port $port; " ^
+    "exit ($connection.TcpTestSucceeded -eq $false ? 1 : 0)"
+
+if %ERRORLEVEL% == 1 (
+    echo Ollama nao esta rodando. Iniciando Ollama em segundo plano...
+    :: start "" /B "C:\Caminho\Para\Ollama.exe" serve
+
+    echo Aguardando Ollama iniciar...
+    timeout /t 5 >nul
+
+    :check_port
+    powershell -Command ^
+        "$port=11434; " ^
+        "$connection = Test-NetConnection -ComputerName 127.0.0.1 -Port $port; " ^
+        "exit ($connection.TcpTestSucceeded -eq $false ? 1 : 0)"
+    if %ERRORLEVEL% == 1 (
+        echo Aguardando Ollama iniciar...
+        timeout /t 2 >nul
+        goto check_port
+    )
+) else (
+    echo Ollama ja esta rodando.
+)
+
 :: Teste rapido de inicializacao do motor de voz
 echo Testando modulo de voz...
 python - <<END
@@ -44,6 +72,6 @@ echo   CONFIGURACAO CONCLUIDA COM SUCESSO ✅
 echo   Para iniciar o assistente, use:
 echo.
 echo   venv\Scripts\activate
-echo   python main.py
+echo   python AURA-AI.py
 echo ==========================================
 pause
